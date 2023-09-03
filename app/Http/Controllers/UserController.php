@@ -4,35 +4,40 @@ namespace App\Http\Controllers;
 
 use App\Models\Book;
 use Illuminate\Http\Request;
+use App\Services\BookService;
 use App\Services\UserService;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class UserController extends Controller
 {
     protected $userService;
+    protected $bookService;
 
-    public function __construct(UserService $userService)
+    public function __construct(UserService $userService, BookService $bookService)
     {
         $this->userService = $userService;
+        $this->bookService = $bookService;
     }
 
     public function index()
     {
-        $users = $this->userService->getAllUsers();
-        return  view('users.index', compact('users'));
+        $users = $this->userService->getAllUsers()->load('books');
+        return response()->json($users);
     }
 
     public function show($id)
     {
         $user = $this->userService->getUserById($id);
-        return  view('users.show', compact('user'));
+
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        $user = $user->load('books');
+
+        return response()->json($user);
     }
 
-    public function create()
-    {
-        $books = Book::all();
-        return view('users.create', compact('books')); 
-    }
 
     public function store(Request $request)
     {
@@ -44,54 +49,48 @@ class UserController extends Controller
 
         $user = $this->userService->createUser($validatedData);
 
-        $bookIds = $request->input('books', []);
-        foreach ($bookIds as $bookId) {
-            DB::table('user_book')->insert([
-                'user_id' => $user->id,
-                'book_id' => $bookId
-            ]);
-        }
-        return redirect()->route('users.index');
-    }
+        $user->books()->attach($request->books);
 
-    public function edit($id)
-    {
-        $user = $this->userService->getUserById($id);
-        $allBooks = Book::all();
-        $userBookIds = DB::table('user_book')->where('user_id', $id)->pluck('book_id')->toArray();
-    
-        return view('users.edit', compact('user', 'allBooks', 'userBookIds'));
+        return response()->json([
+            'message' => 'User successfully created and books associated.',
+            'user' => $user->load('books')
+        ]);
     }
 
     public function update(Request $request, $id)
     {
+        $user = $this->userService->getUserById($id);
+
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
         $validatedData = $this->validate($request, [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,' . $id,
             'phone' => 'required|numeric|digits:10'
         ]);
 
-        $this->userService->updateUser($id, $validatedData);
+        $user = $this->userService->updateUser($id, $validatedData);
 
-        $bookIds = $request->input('books', []);
-        DB::table('user_book')->where('user_id', $id)->delete();
-    
-        foreach ($bookIds as $bookId) {
-            DB::table('user_book')->insert([
-                'user_id' => $id,
-                'book_id' => $bookId
-            ]);
-        }
-        return redirect()->route('users.index');
+        $user->books()->sync($request->books);
+
+        return response()->json([
+            'message' => 'User successfully updated and books associated.',
+            'user' => $user->load('books')
+        ]);
     }
 
     public function destroy($id)
     {
-        DB::table('user_book')->where('user_id', $id)->delete();
-        
+        $user = $this->userService->getUserById($id);
 
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+        
         $this->userService->deleteUser($id);
         
-        return redirect()->route('users.index');
+        return response()->json(['message' => 'User successfully deleted and books associated.', 200]);
     }
 }

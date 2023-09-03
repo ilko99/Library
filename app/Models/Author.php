@@ -13,7 +13,7 @@ class Author extends Model
     protected $fillable = ['name'];
 
     public function books(){
-        return $this->belongsToMany(Book::class);
+        return $this->belongsToMany(Book::class)->withPivot(['author_id', 'book_id']);
     }
 
 }

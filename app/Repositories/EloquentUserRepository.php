@@ -27,6 +27,10 @@ class EloquentUserRepository implements UserRepositoryInterface
     
     public function update($id, array $attributes){
         $user = $this->find($id);
+        if(!$user){
+            return null;
+        }
+
         $user->update($attributes);
         return $user;
     }
